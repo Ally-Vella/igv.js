@@ -386,6 +386,49 @@ class AlignmentTrack extends TrackBase {
                 }
             }
 
+            // 新增部分：检测'pa'标签并绘制矩形
+            if (alignment.tags()['pa']) { // 确保alignment对象有tags属性且包含pa标签
+                
+                const paValue = parseFloat(alignment.tags()['pa'])
+                // console.log('paValue: ' + paValue)
+                const READ_STRAND_FLAG = 0x10
+                let gene_direct = (true === alignment.strand ? '+' : '-')
+                // console.info('strands: ' + gene_direct)
+                if (!isNaN(paValue) && paValue > 0) {
+                    // 确定3'端位置
+                    let threeEndBP
+                    if (gene_direct == '-') { // 负链：3'端在参考起始位置
+                        threeEndBP = alignment.start
+                    } else { // 正链：3'端在参考结束位置
+                        threeEndBP = alignment.end
+                    }
+        
+                    // 将BP位置转换为像素位置
+                    const threeEndPixel = (threeEndBP - bpStart) / bpPerPixel
+        
+                    // 计算矩形的长度（将pa值转换为像素长度）
+                    const paLengthPixel = paValue / bpPerPixel
+        
+                    // 设置矩形的起始和结束像素位置
+                    let rectStartPixel, rectEndPixel
+                    if (gene_direct == '-') {
+                        rectStartPixel = threeEndPixel - paLengthPixel
+                        rectEndPixel = threeEndPixel
+                    } else {
+                        rectStartPixel = threeEndPixel
+                        rectEndPixel = threeEndPixel + paLengthPixel
+                    }
+                    
+                    // 绘制矩形
+                    // let PA_COLOR = '#f08282'
+                    let PA_COLOR = IGVColor.addAlpha('#f08282', 0.8)
+                    IGVGraphics.fillRect(ctx, rectStartPixel, y, paLengthPixel, alignmentHeight, { fillStyle: PA_COLOR })
+                    // ctx.fillRect(rectStartPixel, y, paLengthPixel, alignmentHeight)
+                }
+            } else {
+                console.log('no pa tag!')
+            }
+
             if (alignment.gaps) {
                 const yStrokedLine = y + alignmentHeight / 2
                 for (let gap of alignment.gaps) {

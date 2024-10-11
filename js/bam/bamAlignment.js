@@ -488,8 +488,7 @@ function decodeTags(ba) {
                         value.push(dataView.getUint32(p))
                         break
                     case 'f':
-                        // value.push(dataView.getFloat32(p))
-                        value.push(dataView.getFloat32(p, ture))
+                        value.push(dataView.getFloat32(p))
                 }
                 p += elementSize
             }
@@ -513,14 +512,9 @@ function readShort(ba, offset) {
     return (ba[offset + 1] << 8) | (ba[offset])
 }
 
-// function readFloat(ba, offset) {
-//     const dataView = new DataView(ba.buffer)
-//     return dataView.getFloat32(offset)
-// }
-
 function readFloat(ba, offset) {
-    const dataView = new DataView(ba.buffer, ba.byteOffset, ba.byteLength)
-    return dataView.getFloat32(offset, true)
+    const dataView = new DataView(ba.buffer)
+    return dataView.getFloat32(offset)
 }
 
 function readInt8(ba, offset) {

@@ -4,7 +4,7 @@ import Dialog from "./components/dialog.js"
 import $ from "../vendor/jquery-3.3.1.slim.js"
 import {colorPalettes} from "../util/colorPalletes.js"
 
-const colorPickerTrackTypeSet = new Set(['bedtype', 'alignment', 'annotation', 'variant', 'wig', 'interact'])
+const colorPickerTrackTypeSet = new Set(['bedtype', 'alignment', 'annotation', 'variant', 'wig', 'interact', 'shoebox'])
 
 const vizWindowTypes = new Set(['alignment', 'annotation', 'variant', 'eqtl', 'qtl', 'snp', 'shoebox', 'wig'])
 
@@ -221,10 +221,11 @@ function colorPickerMenuItem({trackView, label, option}) {
     const object = $('<div>')
     object.text(label)
 
-    return {
-        object,
-        click: () => trackView.presentColorPicker(option)
+    const click = () => {
+        trackView.presentColorPicker(option)
     }
+
+    return { object, click }
 }
 
 function unsetColorMenuItem({trackView, label}) {
@@ -235,8 +236,9 @@ function unsetColorMenuItem({trackView, label}) {
     return {
         object,
         click: () => {
-            trackView.track.color = undefined
-            trackView.repaintViews()
+            // trackView.track.color = trackView.track.initialTrackColor ? trackView.track.initialTrackColor['color'] : undefined;
+            trackView.track.color = trackView.track._initialColor || trackView.track.constructor.defaultColor;
+            trackView.repaintViews();
         }
     }
 }
@@ -249,8 +251,9 @@ function unsetAltColorMenuItem({trackView, label}) {
     return {
         object: $e,
         click: () => {
-            trackView.track.altColor = undefined
-            trackView.repaintViews()
+            // trackView.track.altColor = trackView.track.initialTrackColor ? trackView.track.initialTrackColor['altColor'] : undefined;
+            trackView.track.altColor = trackView.track._initialAltColor || trackView.track.constructor.defaultColor;
+            trackView.repaintViews();
         }
     }
 }
@@ -346,7 +349,7 @@ function getTrackLabelText(track) {
 }
 
 function canShowColorPicker(track) {
-    return undefined === track.type || colorPickerTrackTypeSet.has(track.type)
+    return undefined === track.type || (colorPickerTrackTypeSet.has(track.type) && 'heatmap' !== track.graphType)
 }
 
 function didSelectSingleTrackType(types) {

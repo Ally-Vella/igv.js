@@ -7,11 +7,12 @@ import paintAxis from "../util/paintAxis.js"
 import {IGVColor, StringUtils} from "../../node_modules/igv-utils/src/index.js"
 import $ from "../vendor/jquery-3.3.1.slim.js"
 import {createCheckbox} from "../igv-icons.js"
-
-const DEFAULT_COLOR = 'rgb(150, 150, 150)'
-
+import {ColorScaleFactory} from "../util/colorScale.js"
+import ColorScaleEditor from "../ui/components/colorScaleEditor.js"
 
 class WigTrack extends TrackBase {
+
+    static defaultColor = 'rgb(150, 150, 150)'
 
     static defaults = {
         height: 50,
@@ -38,7 +39,7 @@ class WigTrack extends TrackBase {
         this.type = "wig"
         this.featureType = 'numeric'
         this.resolutionAware = true
-        this.paintAxis = paintAxis
+        this._paintAxis = paintAxis.bind(this)
 
         const format = config.format ? config.format.toLowerCase() : config.format
         if (config.featureSource) {
@@ -52,7 +53,6 @@ class WigTrack extends TrackBase {
             this.featureSource = FeatureSource(config, this.browser.genome)
         }
 
-
         // Override autoscale default
         if (config.max === undefined || config.autoscale === true) {
             this.autoscale = true
@@ -62,16 +62,39 @@ class WigTrack extends TrackBase {
                 max: config.max
             }
         }
+
+        if (config.colorScale) {
+            this._colorScale = ColorScaleFactory.fromJson(config.colorScale)
+        }
+
+        // Override default height for heatmaps
+        if ("heatmap" === config.graphType && !config.height) {
+            this.height = 20
+        }
     }
 
     async postInit() {
         const header = await this.getHeader()
         if (this.disposed) return   // This track was removed during async load
         if (header) this.setTrackProperties(header)
+
+        this._initialColor = this.color || this.constructor.defaultColor
+        this._initialAltColor = this.altColor || this.constructor.defaultColor
+
     }
 
-    supportsWholeGenome() {
-        return this.visibilityWindow === undefined || this.visibilityWindow < 0
+    get supportsWholeGenome() {
+        return !this.config.indexURL && this.config.supportsWholeGenome !== false
+    }
+
+    get paintAxis() {
+        // Supply do-nothing implementation for heatmaps
+        return "heatmap" === this.graphType ? () => {
+        } : this._paintAxis
+    }
+
+    get colorScale() {
+        return this._colorScale
     }
 
     async getFeatures(chr, start, end, bpPerPixel) {
@@ -111,18 +134,30 @@ class WigTrack extends TrackBase {
     menuItemList() {
         const items = []
 
-        if (this.flipAxis !== undefined) {
+        if ('heatmap' === this.graphType) {
             items.push('<hr>')
-
-            function click() {
-                this.flipAxis = !this.flipAxis
-                this.trackView.repaintViews()
-            }
-
-            items.push({label: 'Flip y-axis', click})
+            items.push({
+                label: 'Set color scale', click: function () {
+                    ColorScaleEditor.open(this.colorScale, this.browser.columnContainer, (colorScale) => {
+                        this._colorScale = colorScale
+                        this.trackView.repaintViews()
+                    })
+                }
+            })
+        } else if (this.flipAxis !== undefined) {
+            items.push('<hr>')
+            items.push({
+                label: 'Flip y-axis',
+                click: function () {
+                    this.flipAxis = !this.flipAxis
+                    this.trackView.repaintViews()
+                }
+            })
         }
 
-        if(this.featureSource.windowFunctions) {
+        items.push(...this.graphTypeItems())
+
+        if (this.featureSource.windowFunctions) {
             items.push(...this.wigSummarizationItems())
         }
 
@@ -152,6 +187,27 @@ class WigTrack extends TrackBase {
         return menuItems
     }
 
+    graphTypeItems() {
+
+        const graphType = ['bar', 'line', 'points', 'heatmap']
+
+        const menuItems = []
+        menuItems.push('<hr/>')
+        menuItems.push("<div>Graph type</div>")
+
+        for (const gt of graphType) {
+            const object = $(createCheckbox(gt, this.graphType === gt))
+
+            function clickHandler() {
+                this.graphType = gt
+                this.trackView.repaintViews()
+            }
+
+            menuItems.push({object, click: clickHandler})
+        }
+
+        return menuItems
+    }
 
     async getHeader() {
 
@@ -175,11 +231,11 @@ class WigTrack extends TrackBase {
 
     computeYPixelValueInLogScale(yValue, yScaleFactor) {
         let maxValue = this.dataRange.max
-        let minValue =  this.dataRange.min
+        let minValue = this.dataRange.min
         minValue = (minValue < 0) ? -Math.log10(Math.abs(minValue) + 1) : Math.log10(Math.abs(minValue) + 1)
         maxValue = (maxValue < 0) ? -Math.log10(Math.abs(maxValue) + 1) : Math.log10(Math.abs(maxValue) + 1)
-        
-        yValue = (yValue < 0) ? -Math.log10(Math.abs(yValue) +1) : Math.log10(yValue + 1)
+
+        yValue = (yValue < 0) ? -Math.log10(Math.abs(yValue) + 1) : Math.log10(yValue + 1)
         return ((this.flipAxis ? (yValue - minValue) : (maxValue - yValue)) * yScaleFactor)
     }
 
@@ -192,7 +248,7 @@ class WigTrack extends TrackBase {
         const pixelWidth = options.pixelWidth
         const pixelHeight = options.pixelHeight - 1
         const bpEnd = bpStart + pixelWidth * bpPerPixel + 1
-        
+
         const scaleFactor = this.getScaleFactor(this.dataRange.min, this.dataRange.max, pixelHeight, this.logScale)
         const yScale = (yValue) => this.logScale
             ? this.computeYPixelValueInLogScale(yValue, scaleFactor)
@@ -216,7 +272,7 @@ class WigTrack extends TrackBase {
                     if (f.start > bpEnd) break
 
                     const x = (f.start - bpStart) / bpPerPixel
-                    if (isNaN(x)) continue
+                    if (Number.isNaN(x)) continue
 
                     let y = yScale(f.value)
 
@@ -244,6 +300,16 @@ class WigTrack extends TrackBase {
                             IGVGraphics.fillCircle(ctx, px, pixelHeight - pointSize / 2, pointSize / 2, 3, {fillStyle: this.overflowColor})
                         }
 
+
+                    } else if (this.graphType === "heatmap") {
+                        if (!this._colorScale) {
+                            // Create a default color scale.
+                            this._colorScale = this.dataRange.min < 0 && this.dataRange.max > 0 ?
+                                ColorScaleFactory.defaultDivergingScale(this.dataRange.min, 0, this.dataRange.max) :
+                                ColorScaleFactory.defaultGradientScale(this.dataRange.min, this.dataRange.max)
+                        }
+                        const color = this._colorScale.getColor(f.value)
+                        IGVGraphics.fillRect(ctx, x, 0, width, pixelHeight, {fillStyle: color})
                     } else {
                         // Default graph type (bar)
                         const height = Math.min(pixelHeight, y - y0)
@@ -262,7 +328,7 @@ class WigTrack extends TrackBase {
                 // If the track includes negative values draw a baseline
                 if (this.dataRange.min < 0) {
                     let maxValue = this.dataRange.max
-                    let minValue =  this.dataRange.min
+                    let minValue = this.dataRange.min
                     minValue = (this.logScale === true) ? ((minValue < 0) ? -Math.log10(Math.abs(minValue) + 1) : Math.log10(Math.abs(minValue) + 1)) : minValue
                     maxValue = (this.logScale === true) ? ((maxValue < 0) ? -Math.log10(Math.abs(maxValue) + 1) : Math.log10(Math.abs(maxValue) + 1)) : maxValue
                     const ratio = maxValue / (maxValue - minValue)
@@ -338,10 +404,6 @@ class WigTrack extends TrackBase {
         }
     }
 
-    get supportsWholeGenome() {
-        return !this.config.indexURL && this.config.supportsWholeGenome !== false
-    }
-
     /**
      * Return color for feature.
      * @param feature
@@ -349,8 +411,17 @@ class WigTrack extends TrackBase {
      */
 
     getColorForFeature(f) {
-        let c = (f.value < 0 && this.altColor) ? this.altColor : this.color || DEFAULT_COLOR
+        let c = (f.value < 0 && this.altColor) ? this.altColor : this.color || WigTrack.defaultColor
         return (typeof c === "function") ? c(f.value) : c
+    }
+
+
+    getState() {
+        const state = super.getState()
+        if (this._colorScale) {
+            state.colorScale = this._colorScale.toJson()
+        }
+        return state
     }
 
     /**
@@ -373,7 +444,7 @@ class WigTrack extends TrackBase {
  */
 function summarizeData(features, startBP, bpPerPixel, windowFunction = "mean") {
 
-    if (bpPerPixel <= 1 || !features || features.length === 0) {
+    if (bpPerPixel <= 1 || !features || features.length === 0 || windowFunction === "none") {
         return features
     }
 
@@ -418,7 +489,7 @@ function summarizeData(features, startBP, bpPerPixel, windowFunction = "mean") {
 
         if (!currentBinData || endBin > currentBinData.bin) {
 
-            if(currentBinData) {
+            if (currentBinData) {
                 finishBin(currentBinData)
             }
 
@@ -432,7 +503,7 @@ function summarizeData(features, startBP, bpPerPixel, windowFunction = "mean") {
         }
 
     }
-    if(currentBinData) {
+    if (currentBinData) {
         finishBin(currentBinData)
     }
 

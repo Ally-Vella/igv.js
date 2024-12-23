@@ -44,6 +44,7 @@ import {decodeFusionJuncSpan} from "./decode/fusionJuncSpan.js"
 import {decodeGtexGWAS} from "./decode/gtexGWAS.js"
 import {decodeCustom} from "./decode/custom.js"
 import {decodeGcnv} from "../gcnv/gcnvDecoder.js"
+import decodeShoebox from "../shoebox/decodeShoebox.js"
 import DecodeError from "./decode/decodeError.js"
 import GFFHelper from "./gff/gffHelper.js"
 
@@ -126,7 +127,9 @@ class FeatureParser {
                 const tokens = line.split(this.delimiter || "\t")
                 try {
                     const tmpHeader = Object.assign({columnNames}, header)
-                    if (this.decode(tokens, tmpHeader)) {
+                    let firstFeature
+                    if (firstFeature = this.decode(tokens, tmpHeader)) {
+                        header.firstFeature = firstFeature
                         break
                     } else {
                         if (tokens.length > 1) {
@@ -317,6 +320,10 @@ class FeatureParser {
                 break
             case "gcnv":
                 this.decode = decodeGcnv
+                this.delimiter = "\t"
+                break
+            case "shoebox":
+                this.decode = decodeShoebox
                 this.delimiter = "\t"
                 break
             default:

@@ -29,8 +29,6 @@ import $ from "./vendor/jquery-3.3.1.slim.js"
 import {createCheckbox} from "./igv-icons.js"
 import {findFeatureAfterCenter} from "./feature/featureUtils.js"
 
-const DEFAULT_COLOR = 'rgb(150,150,150)'
-
 const fixColor = (colorString) => {
     if (StringUtils.isString(colorString)) {
         return (colorString.indexOf(",") > 0 && !(colorString.startsWith("rgb(") || colorString.startsWith("rgba("))) ?
@@ -48,6 +46,8 @@ const fixColor = (colorString) => {
  * @constructor
  */
 class TrackBase {
+
+    static defaultColor = 'rgb(150,150,150)'
 
     static defaults = {
         height: 50,
@@ -95,6 +95,9 @@ class TrackBase {
             }
         }
 
+        // this._initialColor = this.color || this.constructor.defaultColor
+        // this._initialAltColor = this.altColor || this.constructor.defaultColor
+
         if (config.name || config.label) {
             this.name = config.name || config.label
         } else if (FileUtils.isFile(config.url)) {
@@ -133,6 +136,16 @@ class TrackBase {
         } else if (typeof this.config.hoverText === 'function') {
             this.hoverText = this.config.hoverText
         }
+    }
+
+    async postInit(){
+
+        console.log(`TrackBase - track(${ this.type }) - postInit()`)
+
+        this._initialColor = this.color || this.constructor.defaultColor
+        this._initialAltColor = this.altColor || this.constructor.defaultColor
+
+        return this
     }
 
     get name() {
@@ -290,7 +303,7 @@ class TrackBase {
                     }
                     break
                 case "viewlimits":
-                    if (!this.config.autoscale) {   // autoscale in the config has precedence
+                    if (!this.config.autoscale && !this.config.max) {   //config has precedence
                         tokens = properties[key].split(":")
                         let min = 0
                         let max
@@ -520,52 +533,49 @@ class TrackBase {
 
         const menuItems = []
 
-        menuItems.push('<hr/>')
+        // Data range or color scale
 
-        // Data range
-        let object = $('<div>')
-        object.text('Set data range')
+        if ("heatmap" !== this.graphType) {
 
-        function dialogPresentationHandler() {
+            menuItems.push('<hr/>')
 
-            if (this.trackView.track.selected) {
-                this.browser.dataRangeDialog.configure(this.trackView.browser.getSelectedTrackViews())
-            } else {
-                this.browser.dataRangeDialog.configure(this.trackView)
-            }
-            this.browser.dataRangeDialog.present($(this.browser.columnContainer))
-        }
+            function dialogPresentationHandler() {
 
-        menuItems.push({object, dialog: dialogPresentationHandler})
-
-        if (this.logScale !== undefined) {
-
-            object = $(createCheckbox("Log scale", this.logScale))
-
-            function logScaleHandler() {
-                this.logScale = !this.logScale
-                this.trackView.repaintViews()
+                if (this.trackView.track.selected) {
+                    this.browser.dataRangeDialog.configure(this.trackView.browser.getSelectedTrackViews())
+                } else {
+                    this.browser.dataRangeDialog.configure(this.trackView)
+                }
+                this.browser.dataRangeDialog.present($(this.browser.columnContainer))
             }
 
-            menuItems.push({object, click: logScaleHandler})
+            menuItems.push({label: 'Set data range', dialog: dialogPresentationHandler})
+
+            if (this.logScale !== undefined) {
+
+                function logScaleHandler() {
+                    this.logScale = !this.logScale
+                    this.trackView.repaintViews()
+                }
+
+                menuItems.push({object: $(createCheckbox("Log scale", this.logScale)), click: logScaleHandler})
+            }
+
+            function autoScaleHandler() {
+                this.autoscaleGroup = undefined
+                this.autoscale = !this.autoscale
+                this.browser.updateViews()
+            }
+
+            menuItems.push({object: $(createCheckbox("Autoscale", this.autoscale)), click: autoScaleHandler})
         }
-
-        object = $(createCheckbox("Autoscale", this.autoscale))
-
-        function autoScaleHandler() {
-            this.autoscaleGroup = undefined
-            this.autoscale = !this.autoscale
-            this.browser.updateViews()
-        }
-
-        menuItems.push({object, click: autoScaleHandler})
 
         return menuItems
     }
 
-    setDataRange({ min, max }) {
+    setDataRange({min, max}) {
 
-        this.dataRange = { min, max }
+        this.dataRange = {min, max}
         this.autoscale = false
         this.autoscaleGroup = undefined
         this.trackView.repaintViews()

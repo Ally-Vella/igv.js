@@ -5,7 +5,6 @@ import {inferFileFormat} from "../util/fileFormatUtils.js"
 import ROIMenu from "./ROIMenu.js"
 import ROITable from "./ROITable.js"
 
-
 class ROIManager {
 
     constructor(browser) {
@@ -15,34 +14,10 @@ class ROIManager {
         this.roiTable = new ROITable(browser, browser.columnContainer)
         this.top = 0
         this.roiSets = []
+        this.showOverlays = true
+
         this.boundLocusChangeHandler = locusChangeHandler.bind(this)
         browser.on('locuschange', this.boundLocusChangeHandler)
-
-        const updateROIDimensions = () => {
-
-            const tracks = browser.findTracks(track => new Set(['ideogram', 'ruler']).has(track.type))
-            const [rectA, rectB] = tracks
-                .map(track => track.trackView.viewports[0].$viewport.get(0))
-                .map(element => getElementVerticalDimension(element))
-            
-            //Covers cases in which ruler and/or ideogram are hidden
-            const heightA = rectA ? rectA.height : 0
-            const heightB = rectB ? rectB.height : 0
-            
-            const elements = browser.columnContainer.querySelectorAll('.igv-roi-region')
-
-            const fudge = -0.5
-            if (elements) {
-                for (const element of elements) {
-                    element.style.marginTop = `${heightA + heightB + fudge}px`
-                }
-
-            }
-        }
-
-        this.observer = new MutationObserver(updateROIDimensions)
-        //const [ column ] = browser.columnContainer.querySelectorAll('.igv-column')
-        this.observer.observe(browser.columnContainer, {attributes: true, childList: true, subtree: true})
 
     }
 
@@ -66,15 +41,34 @@ class ROIManager {
         this.roiTable.renderTable(records)
 
         if (this.roiSets.length > 0) {
-            const isVisible = this.roiSets[0].isVisible
-            this.roiTable.setROIVisibility(isVisible)
+            this.setOverlayVisibility(this.showOverlays)
         }
+    }
 
+    setOverlayVisibility(isVisible) {
+
+        const elements = this.browser.columnContainer.querySelectorAll('.igv-roi-region')
+        for (let i = 0; i < elements.length; i++) {
+            const el = elements[i]
+            if (isVisible) {
+                // Restore element background color to its original value
+                el.style.backgroundColor = el.dataset.color
+            } else {
+                // Hide overlay by setting its transparency to zero.  A bit of an unusual method to hide an element.
+                el.style.backgroundColor = `rgba(0, 0, 0, 0)`
+            }
+        }
+        this.roiTable.toggleROIButton.textContent = false === isVisible ? 'Show Overlays' : 'Hide Overlays'
     }
 
     async loadROI(config, genome) {
 
         const configs = Array.isArray(config) ? config : [config]
+
+        // Backward compatibility hack
+        if (configs.length > 0 && configs[0].isVisible === false) {
+            this.showOverlays = false
+        }
 
         for (let config of configs) {
             if (!config.name && config.url) {
@@ -164,13 +158,8 @@ class ROIManager {
     }
 
     toggleROIs() {
-
-        const isVisible = !(this.roiSets[0].isVisible)
-        this.roiTable.setROIVisibility(isVisible)
-
-        for (const roiSet of this.roiSets) {
-            roiSet.isVisible = isVisible
-        }
+        this.showOverlays = !this.showOverlays
+        this.setOverlayVisibility(this.showOverlays)
     }
 
     async renderAllROISets() {
@@ -232,9 +221,20 @@ class ROIManager {
         regionElement.style.top = `${pixelTop}px`
         regionElement.style.left = `${pixelX}px`
         regionElement.style.width = `${pixelWidth}px`
-        regionElement.style.backgroundColor = roiSet.color
+
+        const marginTop = `${this.getROIRegionTopMargin()}px`
+        regionElement.style.marginTop = marginTop
+
         regionElement.dataset.color = roiSet.color
         regionElement.dataset.region = regionKey
+
+        if (this.showOverlays) {
+            // Restore element background color to its original value
+            regionElement.style.backgroundColor = roiSet.color
+        } else {
+            // Hide overlay by setting its transparency to zero.  A bit of an unusual method to hide an element.
+            regionElement.style.backgroundColor = `rgba(0, 0, 0, 0)`
+        }
 
         const header = DOMUtils.div()
         regionElement.appendChild(header)
@@ -249,8 +249,38 @@ class ROIManager {
             this.roiMenu.present(feature, roiSet, event, this, columnContainer, regionElement)
         })
 
-
         return regionElement
+    }
+
+    updateROIRegionPositions() {
+        const top = `${this.getROIRegionTopMargin()}px`
+        const columns = this.browser.columnContainer.querySelectorAll('.igv-column')
+        for (let i = 0; i < columns.length; i++) {
+            const elements = columns[i].querySelectorAll('.igv-roi-region')
+            for (let j = 0; j < elements.length; j++) {
+                elements[j].style.marginTop = top
+            }
+        }
+    }
+
+    getROIRegionTopMargin() {
+
+        const browser = this.browser
+
+        const tracks = browser.findTracks(track => new Set(['ideogram', 'ruler']).has(track.type))
+
+        const [rectA, rectB] = tracks
+            .map(track => track.trackView.viewports[0].$viewport.get(0))
+            .map(element => getElementVerticalDimension(element))
+
+        //Covers cases in which ruler and/or ideogram are hidden
+        const heightA = rectA ? rectA.height : 0
+        const heightB = rectB ? rectB.height : 0
+
+        const fudge = -0.5
+        const roiRegionMargin = heightA + heightB + fudge
+
+        return roiRegionMargin
     }
 
     renderSVGContext(columnContainer, context, {deltaX, deltaY}) {
@@ -274,10 +304,10 @@ class ROIManager {
         return this.roiSets.find(roiSet => true === roiSet.isUserDefined)
     }
 
-    deleteUserDefinedROISet(){
-        this.roiSets = this.roiSets.filter(roiSet => roiSet.isUserDefined !== true);
+    deleteUserDefinedROISet() {
+        this.roiSets = this.roiSets.filter(roiSet => roiSet.isUserDefined !== true)
     }
-    
+
     initializeUserDefinedROISet() {
 
         const config =

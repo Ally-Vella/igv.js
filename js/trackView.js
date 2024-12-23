@@ -33,7 +33,7 @@ import {createIcon} from "./ui/utils/icons.js"
 import SampleInfoViewport from "./sample/sampleInfoViewport.js"
 import SampleNameViewport from './sample/sampleNameViewport.js'
 import MenuPopup from "./ui/menuPopup.js"
-import { autoScaleGroupColorHash, multiTrackSelectExclusionTypes } from "./ui/menuUtils.js"
+import {autoScaleGroupColorHash, multiTrackSelectExclusionTypes} from "./ui/menuUtils.js"
 import {colorPalettes, hexToRGB} from "./util/colorPalletes.js"
 import {isOverlayTrackCriteriaMet} from "./ui/overlayTrackButton.js"
 
@@ -117,6 +117,8 @@ class TrackView {
     createAxis(browser, track) {
 
         const axis = DOMUtils.div()
+        this.axis = axis
+
         browser.columnContainer.querySelector('.igv-axis-column').appendChild(axis)
 
         axis.dataset.tracktype = track.type
@@ -134,12 +136,12 @@ class TrackView {
 
         if (false === multiTrackSelectExclusionTypes.has(this.track.type)) {
 
-            const trackSelectionContainer = DOMUtils.div()
-            axis.appendChild(trackSelectionContainer)
+            this.trackSelectionContainer = DOMUtils.div()
+            axis.appendChild(this.trackSelectionContainer)
 
             const html = `<input type="checkbox" name="track-select">`
             const input = document.createRange().createContextualFragment(html).firstChild
-            trackSelectionContainer.appendChild(input)
+            this.trackSelectionContainer.appendChild(input)
             input.checked = this.track.selected || false
 
             input.addEventListener('change', event => {
@@ -147,10 +149,10 @@ class TrackView {
                 event.stopPropagation()
                 this.track.selected = event.target.checked
                 this.setDragHandleSelectionState(event.target.checked)
-                this.browser.overlayTrackButton.setVisibility( isOverlayTrackCriteriaMet(this.browser) )
+                this.browser.overlayTrackButton.setVisibility(isOverlayTrackCriteriaMet(this.browser))
             })
 
-            this.setTrackSelectionState(axis, false)
+            this.enableTrackSelection(false)
 
         }
 
@@ -202,54 +204,55 @@ class TrackView {
         }
     }
 
-
-    presentColorPicker(key) {
+    presentColorPicker(colorSelection) {
 
         if (false === colorPickerExclusionTypes.has(this.track.type)) {
 
-            const trackColors = []
-            const color = this.track.color || this.track.defaultColor
-            if (StringUtils.isString(color)) {
-                trackColors.push(color)
-            }
-            if (this.track.altColor && StringUtils.isString(this.track.altColor)) {
-                trackColors.push(this.track.altColor)
-            }
-            let defaultColors = trackColors.map(c => c.startsWith("#") ? c : c.startsWith("rgb(") ? IGVColor.rgbToHex(c) : IGVColor.colorNameToHex(c))
-            let colorHandlers =
-                {
-                    color: hex => {
-                        this.track.color = hexToRGB(hex)
-                        this.repaintViews()
-                    },
-                    altColor: hex => {
-                        this.track.altColor = hexToRGB(hex)
-                        this.repaintViews()
-                    }
+            let initialTrackColor
 
-                }
+            if (colorSelection === 'color') {
+                initialTrackColor = this.track._initialColor || this.track.constructor.defaultColor
+            } else {
+                initialTrackColor = this.track._initialAltColor || this.track.constructor.defaultColor
+            }
 
+            let colorHandlers
             const selected = this.browser.getSelectedTrackViews()
-
             if (selected.length > 0 && new Set(selected).has(this)) {
 
                 colorHandlers =
                     {
                         color: rgbString => {
-                            for (let trackView of selected) {
+                            for (const trackView of selected) {
                                 trackView.track.color = rgbString
                                 trackView.repaintViews()
                             }
-                        }
-                    }
-
-                this.browser.genericColorPicker.configure(defaultColors, colorHandlers)
+                        },
+                        altColor: rgbString => {
+                            for (const trackView of selected) {
+                                trackView.track.altColor = rgbString
+                                trackView.repaintViews()
+                            }
+                        },
+                    };
             } else {
-                this.browser.genericColorPicker.configure(defaultColors, colorHandlers)
+                colorHandlers =
+                    {
+                        color: hex => {
+                            this.track.color = hexToRGB(hex)
+                            this.repaintViews()
+                        },
+                        altColor: hex => {
+                            this.track.altColor = hexToRGB(hex)
+                            this.repaintViews()
+                        }
+                    };
             }
 
-            this.browser.genericColorPicker.setActiveColorHandler(key)
+            const moreColorsPresentationColor = 'color' === colorSelection ? (this.track.color || this.track.constructor.defaultColor) : (this.track.altColor || this.track.constructor.defaultColor)
+            this.browser.genericColorPicker.configure(initialTrackColor, colorHandlers[colorSelection], moreColorsPresentationColor)
             this.browser.genericColorPicker.show()
+
         }
 
     }
@@ -273,8 +276,8 @@ class TrackView {
             this.paintAxis()
         }
 
-        for (let {$viewport} of this.viewports) {
-            $viewport.height(newHeight)
+        for (let vp of this.viewports) {
+            vp.setHeight(newHeight)
         }
 
         this.sampleInfoViewport.setHeight(newHeight)
@@ -966,13 +969,19 @@ class TrackView {
         return Math.max(...this.viewports.map(viewport => viewport.getContentHeight()))
     }
 
-    setTrackSelectionState(axis, doEnableMultiSelection) {
+    enableTrackSelection(doEnableMultiSelection) {
 
-        const container = axis.querySelector('div')
+        const container = this.trackSelectionContainer
+
+        if (!container || multiTrackSelectExclusionTypes.has(this.track.type)) {
+            return
+        }
 
         if (false !== doEnableMultiSelection) {
             container.style.display = 'grid'
         } else {
+            // If disabling selection set track selection state to false
+            this.track.selected = false
 
             const trackSelectInput = container.querySelector('[name=track-select]')
             trackSelectInput.checked = this.track.selected
@@ -998,12 +1007,9 @@ class TrackView {
             dragHandle.classList.remove('igv-track-drag-handle-selected-color')
             dragHandle.classList.add('igv-track-drag-handle-color')
         }
-
     }
 
 }
-
-
 
 function renderSVGAxis(context, track, axisCanvas, deltaX, deltaY) {
 

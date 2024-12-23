@@ -538,6 +538,7 @@ function decodeSNP(tokens, header) {
 
 }
 
+
 class UCSCBedFeature {
 
     constructor(properties) {

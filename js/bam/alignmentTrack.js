@@ -421,7 +421,7 @@ class AlignmentTrack extends TrackBase {
                     
                     // 绘制矩形
                     // let PA_COLOR = '#f08282'
-                    let PA_COLOR = IGVColor.addAlpha('#f08282', 0.8)
+                    let PA_COLOR = IGVColor.addAlpha('#b55d60', 0.8)
                     IGVGraphics.fillRect(ctx, rectStartPixel, y, paLengthPixel, alignmentHeight, { fillStyle: PA_COLOR })
                     // ctx.fillRect(rectStartPixel, y, paLengthPixel, alignmentHeight)
                 }

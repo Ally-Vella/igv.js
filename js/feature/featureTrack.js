@@ -1,4 +1,3 @@
-import $ from "../vendor/jquery-3.3.1.slim.js"
 import FeatureSource from './featureSource.js'
 import TrackBase from "../trackBase.js"
 import IGVGraphics from "../igv-canvas.js"
@@ -7,11 +6,11 @@ import {reverseComplementSequence} from "../util/sequenceUtils.js"
 import {aminoAcidSequenceRenderThreshold, renderFeature} from "./render/renderFeature.js"
 import {renderSnp} from "./render/renderSnp.js"
 import {renderFusionJuncSpan} from "./render/renderFusionJunction.js"
-import {StringUtils} from "../../node_modules/igv-utils/src/index.js"
+import {StringUtils, FeatureUtils} from "../../node_modules/igv-utils/src/index.js"
 import {ColorTable, PaletteColorTable} from "../util/colorPalletes.js"
-import {isSecureContext, expandRegion} from "../util/igvUtils.js"
+import {isSecureContext} from "../util/igvUtils.js"
 import {IGVColor} from "../../node_modules/igv-utils/src/index.js"
-import {findFeatureAfterCenter} from "./featureUtils.js"
+
 
 class FeatureTrack extends TrackBase {
 
@@ -105,6 +104,30 @@ class FeatureTrack extends TrackBase {
         return this
 
     }
+
+    set filter(f) {
+        this._filter = f
+        this._repackCachedFeatures()
+        this.trackView.repaintViews()
+    }
+
+
+    inViewFeatures() {
+        const inViewFeatures = []
+        for (let viewport of this.trackView.viewports) {
+            if (viewport.isVisible() && viewport.featureCache) {
+                const referenceFrame = viewport.referenceFrame
+                const start = referenceFrame.start
+                const end = start + referenceFrame.toBP(viewport.getWidth())
+                const viewFeatures = FeatureUtils.findOverlapping(viewport.featureCache.features, start, end)
+                for (let f of viewFeatures) {
+                    inViewFeatures.push(f)
+                }
+            }
+        }
+        return inViewFeatures
+    }
+
 
     /**
      * Return true if this track can be searched for genome location by feature property.
@@ -210,6 +233,7 @@ class FeatureTrack extends TrackBase {
             options.rowLastX = []
             options.rowLastLabelX = []
             for (let feature of features) {
+                if (this._filter && !this._filter(feature)) continue
                 if (feature.start > bpStart && feature.end < bpEnd) {
                     const row = this.displayMode === "COLLAPSED" ? 0 : feature.row || 0
                     if (!rowFeatureCount[row]) {
@@ -227,6 +251,8 @@ class FeatureTrack extends TrackBase {
             let lastPxEnd = []
             const selectedFeatures = []
             for (let feature of features) {
+
+                if (this._filter && !this._filter(feature)) continue
                 if (feature.end < bpStart) continue
                 if (feature.start > bpEnd) break
 
@@ -364,14 +390,12 @@ class FeatureTrack extends TrackBase {
 
             for (const colorScheme of ["function", "class"]) {
 
-                const object = $(createCheckbox(`Color by ${colorScheme}`, colorScheme === this.colorBy))
-
                 function colorSchemeHandler() {
                     this.colorBy = colorScheme
                     this.trackView.repaintViews()
                 }
 
-                menuItems.push({object, click: colorSchemeHandler})
+                menuItems.push({element:createCheckbox(`Color by ${colorScheme}`, colorScheme === this.colorBy), click: colorSchemeHandler})
             }
         }
 
@@ -386,8 +410,6 @@ class FeatureTrack extends TrackBase {
 
         for (const displayMode of ["COLLAPSED", "SQUISHED", "EXPANDED"]) {
 
-            const object = $(createCheckbox(lut[displayMode], displayMode === this.displayMode))
-
             function displayModeHandler() {
                 this.displayMode = displayMode
                 this.config.displayMode = displayMode
@@ -395,7 +417,7 @@ class FeatureTrack extends TrackBase {
                 this.trackView.repaintViews()
             }
 
-            menuItems.push({object, click: displayModeHandler})
+            menuItems.push({element:createCheckbox(lut[displayMode], displayMode === this.displayMode), click: displayModeHandler})
         }
 
         return menuItems

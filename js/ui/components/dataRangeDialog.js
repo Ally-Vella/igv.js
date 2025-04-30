@@ -20,7 +20,7 @@ class DataRangeDialog {
         attachDialogCloseHandlerWithParent(header, () => {
             this.minimumInput.value = '';
             this.maximumInput.value = '';
-            this.container.style.display = 'none';
+            this.hide()
         })
 
         // Create minimum input
@@ -66,9 +66,7 @@ class DataRangeDialog {
         this.cancelButton.addEventListener('click', () => {
             this.minimumInput.value = '';
             this.maximumInput.value = '';
-            this.container.style.left = '0px';
-            this.container.style.top = '0px';
-            this.container.style.display = 'none';
+            this.hide()
         });
 
         // Make the container draggable
@@ -100,29 +98,26 @@ class DataRangeDialog {
             this.maximumInput.value = dataRange.max;
         }
 
-        // Remove existing event listeners from minimum input
         this.minimumInput.onkeyup = null;
-        this.minimumInput.addEventListener('keyup', (e) => {
+        this.minimumInput.onkeyup = e => {
             if (e.keyCode === 13) { // Enter key
                 this.processResults(trackViewOrTrackViewList);
             }
             e.stopImmediatePropagation();
-        });
+        }
 
-        // Remove existing event listeners from maximum input
         this.maximumInput.onkeyup = null;
-        this.maximumInput.addEventListener('keyup', (e) => {
+        this.maximumInput.onkeyup = e=> {
             if (e.keyCode === 13) { // Enter key
                 e.stopImmediatePropagation();
                 this.processResults(trackViewOrTrackViewList);
             }
-        });
+        }
 
-        // Remove existing event listeners from OK button
-        this.okButton.onclick = null;
-        this.okButton.addEventListener('click', () => {
-            this.processResults(trackViewOrTrackViewList);
-        });
+        this.okButton.onclick = null
+        this.okButton.onclick = () => {
+            this.processResults(trackViewOrTrackViewList)
+        }
     }
 
     processResults(trackViewOrTrackViewList) {
@@ -150,9 +145,12 @@ class DataRangeDialog {
             this.maximumInput.value = '';
         }
 
-        // Reset the dialog position and hide it
-        this.container.style.left = '0px';
-        this.container.style.top = '0px';
+        this.hide()
+    }
+
+    hide(){
+        this.container.style.top = '20%';
+        this.container.style.left = '75%';
         this.container.style.display = 'none';
     }
 

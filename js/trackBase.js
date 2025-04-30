@@ -24,7 +24,7 @@
  */
 
 import {isSimpleType} from "./util/igvUtils.js"
-import {FeatureUtils, FileUtils, StringUtils} from "../node_modules/igv-utils/src/index.js"
+import {FileUtils, StringUtils, FeatureUtils} from "../node_modules/igv-utils/src/index.js"
 import {createCheckbox} from "./igv-icons.js"
 import {findFeatureAfterCenter} from "./feature/featureUtils.js"
 
@@ -137,13 +137,10 @@ class TrackBase {
         }
     }
 
-    async postInit(){
-
-        console.log(`TrackBase - track(${ this.type }) - postInit()`)
+    async postInit() {
 
         this._initialColor = this.color || this.constructor.defaultColor
         this._initialAltColor = this.altColor || this.constructor.defaultColor
-
         return this
     }
 
@@ -538,7 +535,7 @@ class TrackBase {
 
             menuItems.push('<hr/>')
 
-            const dialogPresentationHandler = e => {
+            function dialogPresentationHandler(e) {
 
                 if (this.trackView.track.selected) {
                     this.browser.dataRangeDialog.configure(this.trackView.browser.getSelectedTrackViews())
@@ -552,7 +549,7 @@ class TrackBase {
 
             if (this.logScale !== undefined) {
 
-                const logScaleHandler = () => {
+                function logScaleHandler() {
                     this.logScale = !this.logScale
                     this.trackView.repaintViews()
                 }
@@ -560,13 +557,13 @@ class TrackBase {
                 menuItems.push({element: createCheckbox("Log scale", this.logScale), click: logScaleHandler})
             }
 
-            const autoScaleHandler = () => {
+            function autoScaleHandler() {
                 this.autoscaleGroup = undefined
                 this.autoscale = !this.autoscale
                 this.browser.updateViews()
             }
 
-            menuItems.push({element: createCheckbox("Log scale", this.autoscale), click: autoScaleHandler})
+            menuItems.push({element: createCheckbox("Autoscale", this.autoscale), click: autoScaleHandler})
         }
 
         return menuItems
@@ -650,6 +647,53 @@ class TrackBase {
         }
 
         return cooked
+    }
+
+    // Methods to support filtering api
+
+
+    set filter(f) {
+        this._filter = f
+        this.trackView.repaintViews()
+    }
+
+    /**
+     * Return features visible in current viewports.
+     *
+     * @returns {*[]}
+     */
+    getInViewFeatures() {
+        const inViewFeatures = []
+        for (let viewport of this.trackView.viewports) {
+            if (viewport.isVisible()) {
+                const referenceFrame = viewport.referenceFrame
+                const chr = referenceFrame.chr
+                const start = referenceFrame.start
+                const end = start + referenceFrame.toBP(viewport.getWidth())
+
+                // We use the cached features  to avoid async load.  If the
+                // feature is not already loaded it is by definition not in view.
+                if (viewport.cachedFeatures) {
+                    const viewFeatures = FeatureUtils.findOverlapping(viewport.cachedFeatures, start, end)
+                    for (let f of viewFeatures) {
+                        if (!this._filter || this._filter(f)) {
+                            inViewFeatures.push(f)
+                        }
+                    }
+                }
+            }
+        }
+        return inViewFeatures
+    }
+
+    /**
+     * Return an object enumerating filterable attributes, that is attributes that can be used to filter features.
+     * The base implementation returns an empty object, overriden in subclasses.
+     *
+     * @returns {{}}
+     */
+    getFilterableAttributes() {
+        return {}
     }
 }
 

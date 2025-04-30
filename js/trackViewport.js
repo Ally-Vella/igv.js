@@ -59,6 +59,17 @@ class TrackViewport extends Viewport {
 
     }
 
+    didPresentZoomInNotice() {
+
+        const a = !(undefined === this.zoomInNoticeElement)
+
+        if (false === a) {
+            return a
+        }
+
+        return 'flex' === this.zoomInNoticeElement.style.display
+    }
+
     setContentHeight(contentHeight) {
         super.setContentHeight(contentHeight)
         if (this.featureCache) this.featureCache.redraw = true
@@ -502,9 +513,7 @@ class TrackViewport extends Viewport {
 
     renderSVGContext(context, {deltaX, deltaY}, includeLabel = true) {
 
-        const zoomInNotice = this.zoomInNoticeElement && this.zoomInNoticeElement.style.display !== 'flex'
-
-        if (!zoomInNotice) {
+        if (false === this.didPresentZoomInNotice()) {
 
             const {width, height} = this.viewportElement.getBoundingClientRect()
 
@@ -520,7 +529,6 @@ class TrackViewport extends Viewport {
 
             const {start, bpPerPixel} = this.referenceFrame
             const pixelXOffset = Math.round((start - this.referenceFrame.start) / bpPerPixel)
-
             const config =
                 {
                     context,

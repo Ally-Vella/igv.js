@@ -46,6 +46,7 @@ import {inferFileFormat} from "./util/fileFormatUtils.js"
 import {convertToHubURL} from "./ucsc/ucscUtils.js"
 import CursorGuide from "./ui/cursorGuide.js"
 import SliderDialog from "./ui/components/sliderDialog.js"
+import {createBlatTrack} from "./blat/blatTrack.js"
 
 
 // css - $igv-scrollbar-outer-width: 14px;
@@ -283,7 +284,9 @@ class Browser {
     toSVG() {
 
         const {x, y, width, height} = this.columnContainer.getBoundingClientRect()
-        const h_render = height
+
+        const h_render = 8000      // <= DO NOT USE 'height' here
+
         const config =
             {
                 width,
@@ -310,8 +313,8 @@ class Browser {
         // ROI -> SVG
         delta.deltaX = x
 
-        this.roiManager.renderSVGContext(this.columnContainer, context, delta)
-
+        // reset height to trim away unneeded svg canvas real estate. Yes, a bit of a hack.
+        context.setHeight(height)
 
         return context.getSerializedSvg(true)
     }
@@ -324,7 +327,6 @@ class Browser {
         if (container) {
             const svg = document.createElement("svg")
             svg.innerHTML = svgString
-            container.append(svg)
             container.appendChild(svg)
         }
 
@@ -829,7 +831,7 @@ class Browser {
     async loadTrackList(configList) {
 
         // Impose an order if not specified
-        let order = 0
+        let order = this.trackViews.length + 1
         for (let c of configList) {
             if (c.order === undefined) {
                 c.order = order++
@@ -2062,7 +2064,6 @@ class Browser {
      */
     endTrackDrag() {
         if (this.dragTrack) {
-            // this.dragTrack.$trackDragScrim.hide();
             this.dragTrack = undefined
             this.fireEvent('trackorderchanged', [this.getTrackOrder()])
         } else {
@@ -2219,6 +2220,9 @@ class Browser {
         return this.navbar.sampleNameControl
     }
 
+    async blat(sequence) {
+        return createBlatTrack({sequence, browser: this, name: 'Blat', title: 'Blat' })
+    }
 }
 
 function getFileExtension(input) {

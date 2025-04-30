@@ -54,6 +54,8 @@ class Genome {
 
         if (this.chromosomes.size > 0) {
             this.chromosomeNames = Array.from(this.chromosomes.keys())
+        } else if(this.sequence.chromosomeNames) {
+            this.chromosomeNames = this.sequence.chromosomeNames    // Twobit files can supply chromosome names unless they use an external index
         }
 
         if (config.chromAliasBbURL) {
@@ -74,10 +76,10 @@ class Genome {
         }
 
         // Last resort for chromosome information -- retrieve it from the cytoband source if supported
-        if (!this.chromosomeNames && typeof this.cytobandSource.getChromosomeNames === 'function') {
+        if (!this.chromosomeNames && this.cytobandSource && typeof this.cytobandSource.getChromosomeNames === 'function') {
             this.chromosomeNames = await this.cytobandSource.getChromosomeNames()
         }
-        if (this.chromosomes.size === 0 && typeof this.cytobandSource.getChromosomes === 'function') {
+        if (this.chromosomes.size === 0 && this.cytobandSource && typeof this.cytobandSource.getChromosomes === 'function') {
             const c = await this.cytobandSource.getChromosomes()
             for (let chromosome of c) {
                 this.chromosomes.set(c.name, c)
@@ -136,8 +138,10 @@ class Genome {
     getHomeChromosomeName() {
         if (this.showWholeGenomeView() && this.chromosomes.has("all")) {
             return "all"
-        } else {
+        } else if (this.chromosomeNames) {
             return this.chromosomeNames[0]
+        } else {
+
         }
     }
 

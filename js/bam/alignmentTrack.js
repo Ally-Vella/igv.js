@@ -12,6 +12,7 @@ import {getChrColor} from "../util/getChrColor.js"
 import {createCheckbox} from "../igv-icons.js"
 import {modificationName} from "./mods/baseModificationUtils.js"
 import {createElementWithString} from "../ui/utils/dom-utils.js"
+import BAMTrack from "./bamTrack.js"
 
 
 const alignmentStartGap = 5
@@ -214,7 +215,7 @@ class AlignmentTrack extends TrackBase {
             this.colorBy = this.hasPairs ? "unexpectedPair" : "none"
         }
 
-        let pixelTop = options.pixelTop
+        let pixelTop = options.pixelTop - BAMTrack.coverageTrackHeight
         if (this.top) {
             ctx.translate(0, this.top)
         }
@@ -770,10 +771,10 @@ class AlignmentTrack extends TrackBase {
 
         // Group by items //////////////////////////////////////////////////
         menuItems.push('<hr/>')
-        element = document.createElement('div');
-        element.className = 'igv-track-menu-category';
-        element.textContent = 'Group by:';
-        menuItems.push({name: undefined, element, click: undefined, init: undefined});
+        element = document.createElement('div')
+        element.className = 'igv-track-menu-category'
+        element.textContent = 'Group by:'
+        menuItems.push({name: undefined, element, click: undefined, init: undefined})
 
         const groupByMenuItems = []
         groupByMenuItems.push({key: 'none', label: 'none'})
@@ -895,10 +896,10 @@ class AlignmentTrack extends TrackBase {
         // Display mode
         menuItems.push('<hr/>')
 
-        element = document.createElement('div');
-        element.className = 'igv-track-menu-category';
-        element.textContent = 'Display mode:';
-        menuItems.push({name: undefined, element, click: undefined, init: undefined});
+        element = document.createElement('div')
+        element.className = 'igv-track-menu-category'
+        element.textContent = 'Display mode:'
+        menuItems.push({name: undefined, element, click: undefined, init: undefined})
 
         for (let mode of ["EXPANDED", "SQUISHED", "FULL"])
             menuItems.push({
@@ -983,7 +984,12 @@ class AlignmentTrack extends TrackBase {
             this.trackView.repaintViews()
         }
 
-        return {name: undefined, element: createCheckbox(menuItem.label, showCheck), click: clickHandler, init: undefined}
+        return {
+            name: undefined,
+            element: createCheckbox(menuItem.label, showCheck),
+            click: clickHandler,
+            init: undefined
+        }
     }
 
 
@@ -1030,7 +1036,12 @@ class AlignmentTrack extends TrackBase {
             }
         }
 
-        return {name: undefined, element: createCheckbox(menuItem.label, showCheck), dialog: clickHandler, init: undefined}
+        return {
+            name: undefined,
+            element: createCheckbox(menuItem.label, showCheck),
+            dialog: clickHandler,
+            init: undefined
+        }
 
     }
 
@@ -1152,37 +1163,87 @@ class AlignmentTrack extends TrackBase {
                     })
                 }
 
+                list.push('<hr/>')
+                const softClips = clickedAlignment.softClippedBlocks()
                 list.push({
                     label: 'View read sequence',
                     click: () => {
-                        const seqstring = clickedAlignment.seq //.map(b => String.fromCharCode(b)).join("");
-                        if (!seqstring || "*" === seqstring) {
-                            this.browser.alert.present("Read sequence: *")
-                        } else {
-                            this.browser.alert.present(seqstring)
-                        }
+                        const seqstring = clickedAlignment.seq
+                        this.browser.alert.present(seqstring && seqstring !== "*" ? seqstring : "Read sequence: *")
                     }
                 })
+
+                if (softClips.left && softClips.left.len > 0) {
+                    list.push({
+                        label: 'View left soft-clipped sequence',
+                        click: () => {
+                            const clippedSequence = clickedAlignment.seq.substring(softClips.left.seqOffset, softClips.left.seqOffset + softClips.left.len)
+                            this.browser.alert.present(clippedSequence)
+                        }
+                    })
+                }
+
+                if (softClips.right && softClips.right.len > 0) {
+                    list.push({
+                        label: 'View right soft-clipped sequence',
+                        click: () => {
+                            const clippedSequence = clickedAlignment.seq.substring(softClips.right.seqOffset, softClips.right.seqOffset + softClips.right.len)
+                            this.browser.alert.present(clippedSequence)
+                        }
+                    })
+                }
+
+                list.push('<hr/>')
 
                 if (isSecureContext()) {
                     list.push({
                         label: 'Copy read sequence',
                         click: async () => {
-                            const seq = clickedAlignment.seq //.map(b => String.fromCharCode(b)).join("");
                             try {
-                                await navigator.clipboard.writeText(seq)
+                                await navigator.clipboard.writeText(clickedAlignment.seq)
                             } catch (e) {
                                 console.error(e)
                                 this.browser.alert.present(`error copying sequence to clipboard ${e}`)
                             }
-
                         }
                     })
+
+                    if (softClips.left && softClips.left.len > 0) {
+                        list.push({
+                            label: 'Copy left soft-clipped sequence',
+                            click: async () => {
+                                try {
+                                    const clippedSequence = clickedAlignment.seq.substring(softClips.left.seqOffset, softClips.left.seqOffset + softClips.left.len)
+                                    await navigator.clipboard.writeText(clippedSequence)
+                                } catch (e) {
+                                    console.error(e)
+                                    this.browser.alert.present(`error copying sequence to clipboard ${e}`)
+                                }
+                            }
+                        })
+                    }
+
+                    if (softClips.right && softClips.right.len > 0) {
+                        list.push({
+                            label: 'Copy right soft-clipped sequence',
+                            click: async () => {
+                                try {
+                                    const clippedSequence = clickedAlignment.seq.substring(softClips.right.seqOffset, softClips.right.seqOffset + softClips.right.len)
+                                    await navigator.clipboard.writeText(clippedSequence)
+                                } catch (e) {
+                                    console.error(e)
+                                    this.browser.alert.present(`error copying sequence to clipboard ${e}`)
+                                }
+                            }
+                        })
+                    }
                 }
 
-                // TODO if genome supports blat
+                // TODO test if genome supports blat
                 const seqstring = clickedAlignment.seq
                 if (seqstring && "*" !== seqstring) {
+
+                    list.push('<hr/>')
 
                     if (seqstring.length < maxSequenceSize) {
                         list.push({
@@ -1201,7 +1262,7 @@ class AlignmentTrack extends TrackBase {
                         list.push({
                             label: 'BLAT left soft-clipped sequence',
                             click: () => {
-                                const clippedSequence = seqstring.substr(softClips.left.seqOffset, softClips.left.len)
+                                const clippedSequence = seqstring.substring(softClips.left.seqOffset, softClips.left.seqOffset + softClips.left.len)
                                 const sequence = clickedAlignment.isNegativeStrand() ? reverseComplementSequence(clippedSequence) : clippedSequence
                                 const name = `${clickedAlignment.readName} - blat left clip`
                                 const title = `${this.name} - ${name}`
@@ -1213,7 +1274,7 @@ class AlignmentTrack extends TrackBase {
                         list.push({
                             label: 'BLAT right soft-clipped sequence',
                             click: () => {
-                                const clippedSequence = seqstring.substr(softClips.right.seqOffset, softClips.right.len)
+                                const clippedSequence = seqstring.substring(softClips.right.seqOffset, softClips.right.seqOffset + softClips.right.len)
                                 const sequence = clickedAlignment.isNegativeStrand() ? reverseComplementSequence(clippedSequence) : clippedSequence
                                 const name = `${clickedAlignment.readName} - blat right clip`
                                 const title = `${this.name} - ${name}`
@@ -1262,7 +1323,7 @@ class AlignmentTrack extends TrackBase {
         const offsetY = y - this.top
         const genomicLocation = clickState.genomicLocation
 
-        if(features.packedGroups) {
+        if (features.packedGroups) {
             let minGroupY = Number.MAX_VALUE
             for (let group of features.packedGroups.values()) {
                 minGroupY = Math.min(minGroupY, group.pixelTop)

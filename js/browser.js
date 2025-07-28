@@ -6,7 +6,7 @@ import Alert from './ui/alert.js'
 import * as TrackUtils from './util/trackUtils.js'
 import TrackView, {igv_axis_column_width} from "./trackView.js"
 import C2S from "./canvas2svg.js"
-import {getTrack} from "./trackFactory.js"
+import {getTrack, knownTrackTypes} from "./trackFactory.js"
 import XMLSession from "./session/igvXmlSession.js"
 import GenomeUtils from "./genome/genomeUtils.js"
 import ReferenceFrame, {createReferenceFrameList} from "./referenceFrame.js"
@@ -32,7 +32,6 @@ import TrackROISet from "./roi/trackROISet.js"
 import SampleInfo from "./sample/sampleInfo.js"
 import HicFile from "./hic/straw/hicFile.js"
 import {translateSession} from "./hic/shoeboxUtils.js"
-import Hub from "./ucsc/ucscHub.js"
 import MenuUtils from "./ui/menuUtils.js"
 import Genome from "./genome/genome.js"
 import {setDefaults} from "./igv-create.js"
@@ -47,6 +46,7 @@ import {convertToHubURL} from "./ucsc/ucscUtils.js"
 import CursorGuide from "./ui/cursorGuide.js"
 import SliderDialog from "./ui/components/sliderDialog.js"
 import {createBlatTrack} from "./blat/blatTrack.js"
+import {loadHub} from "./ucsc/hub/hubParser.js"
 
 
 // css - $igv-scrollbar-outer-width: 14px;
@@ -206,7 +206,7 @@ class Browser {
 
         this.navbar = new ResponsiveNavbar(config, this)
 
-        this.columnContainer.parentNode.insertBefore(this.navbar.navigation, this.columnContainer);
+        this.columnContainer.parentNode.insertBefore(this.navbar.navigation, this.columnContainer)
 
         if (false === config.showControls) {
             this.navbar.hide()
@@ -219,7 +219,7 @@ class Browser {
         this.dataRangeDialog = new DataRangeDialog(this, this.root)
         this.dataRangeDialog.container.id = `igv-data-range-dialog-${DOMUtils.guid()}`
 
-        this.genericColorPicker = new GenericColorPicker({ parent: this.root, width: 180 })
+        this.genericColorPicker = new GenericColorPicker({parent: this.root, width: 180})
         this.genericColorPicker.container.id = `igv-track-color-picker-${DOMUtils.guid()}`
 
         this.sliderDialog = new SliderDialog(this.root)
@@ -229,10 +229,10 @@ class Browser {
 
     getSampleNameViewportWidth() {
 
-        if (undefined === this.sampleNameViewportWidth) {
+        if (false === this.showSampleNames || undefined === this.sampleNameViewportWidth) {
             return 0
         } else {
-            return false === this.showSampleNames ? 0 : this.sampleNameViewportWidth
+            return this.sampleNameViewportWidth
         }
 
     }
@@ -424,8 +424,7 @@ class Browser {
                 config = new XMLSession(string, knownGenomes)
 
             } else if (filename.endsWith("hub.txt")) {
-
-                const hub = await Hub.loadHub(urlOrFile, options)
+                const hub = await loadHub(urlOrFile, options)
                 const genomeConfig = hub.getGenomeConfig()
                 config = {
                     reference: genomeConfig
@@ -516,7 +515,7 @@ class Browser {
         }
 
         // ROIs
-        if(session.showROIOverlays !== undefined) {
+        if (session.showROIOverlays !== undefined) {
             this.roiManager.showOverlays = session.showROIOverlays
         }
         this.roiManager.clearROIs()
@@ -611,7 +610,7 @@ class Browser {
     }
 
     /**
-     * Load a reference genome object.  This includes the fasta, and optional cytoband, but no tracks.  This method
+     * Load a reference genome object.  This includes the sequence, and optional cytoband, but no tracks.  This method
      * is used by loadGenome and loadSession.
      *
      * @param genomeConfig
@@ -644,17 +643,15 @@ class Browser {
 
         const locusFound = await this.search(locus, true)
         if (!locusFound) {
-            throw new Error(`Cannot set initial locus ${locus}`)
+            console.error(`Cannot set initial locus ${locus}`)
+            if(locus !== genome.initialLocus) {
+                await this.search(genome.initialLocus)
+            }
         }
 
         if (genomeChange) {
-            let trackConfigurations
-            if (genomeConfig.hubURL) {
-                // TODO -- refactor this so "hub" is not loaded twice
-                const hub = await Hub.loadHub(genomeConfig.hubURL)
-                trackConfigurations = hub.getGroupedTrackConfigurations()
-            }
-            this.fireEvent('genomechange', [{genome, trackConfigurations}])
+
+            this.fireEvent('genomechange', [{genome}])
 
             if (this.circularView) {
                 this.circularView.setAssembly({
@@ -693,7 +690,7 @@ class Browser {
         let genomeConfig
         const isHubGenome = idOrConfig.hubURL || (idOrConfig.url && StringUtils.isString(idOrConfig.url) && idOrConfig.url.endsWith("/hub.txt"))
         if (isHubGenome) {
-            const hub = await Hub.loadHub(idOrConfig.hubURL || idOrConfig.url, idOrConfig)
+            const hub = await loadHub(idOrConfig.hubURL || idOrConfig.url, idOrConfig)
             genomeConfig = hub.getGenomeConfig()
         } else if (StringUtils.isString(idOrConfig) || !(idOrConfig.url || idOrConfig.fastaURL || idOrConfig.twoBitURL || idOrConfig.gbkURL)) {
             // Either an ID, a json string, or an object missing required properties.
@@ -724,17 +721,6 @@ class Browser {
         await this.loadTrackList(tracks)
 
         return this.genome
-    }
-
-    /**
-     * Load a UCSC single-file genome assembly hub.
-     * @param options
-     * @returns {Promise<void>}
-     */
-    async loadTrackHub(options) {
-        const hub = await Hub.loadHub(options.url, options)
-        const genomeConfig = setDefaults(hub.getGenomeConfig())
-        return this.loadGenome(genomeConfig)
     }
 
     /**
@@ -840,7 +826,7 @@ class Browser {
         const loadedTracks = await Promise.all(promises)
 
         // If any tracks are selected show the selection buttons
-        if (this.trackViews.some(({ track }) => track.selected)) {
+        if (this.trackViews.some(({track}) => track.selected)) {
             this.navbar.setEnableTrackSelection(true)
         }
 
@@ -864,7 +850,7 @@ class Browser {
     async loadTrack(config) {
 
         const loadedTracks = await this.loadTrackList([config])
-        if(config.autoscaleGroup) {
+        if (config.autoscaleGroup) {
             this.updateViews()
         }
         return loadedTracks[0]
@@ -1051,7 +1037,7 @@ class Browser {
                     const featureSource = FeatureSource(config, this.genome)
                     config._featureSource = featureSource    // This is a temp variable, bit of a hack
                     const trackType = await featureSource.trackType()
-                    if (trackType) {
+                    if (trackType && knownTrackTypes().has(trackType)) {
                         type = trackType
                     } else {
                         type = "annotation"
@@ -1323,7 +1309,7 @@ class Browser {
 
         this.updateLocusSearchWidget()
 
-        for (const { bpPerPixel, chr, start } of this.referenceFrameList) {
+        for (const {bpPerPixel, chr, start} of this.referenceFrameList) {
             if (bpPerPixel <= bppSequenceThreshold) {
                 await this.genome.getSequence(chr, start, start + 1)
             }
@@ -1392,9 +1378,9 @@ class Browser {
             referenceFrame.end = referenceFrame.start + referenceFrame.bpPerPixel * width
         }
 
-        const chrName = referenceFrameList.length === 1 ? this.referenceFrameList[0].chr : ''
-
         const loc = this.referenceFrameList.map(rf => rf.getLocusString()).join(' ')
+
+        const chrName = referenceFrameList.length === 1 ? this.genome.getChromosomeDisplayName(this.referenceFrameList[0].chr) : ''
 
         this.navbar.updateLocus(loc, chrName)
 
@@ -1639,27 +1625,10 @@ class Browser {
     }
 
     /**
-     * @deprecated  This is a deprecated method with no known usages.  To be removed in a future release.
+     * @deprecated  This is a deprecated method with no known usages.
      */
     async goto(chr, start, end) {
         await this.search(chr + ":" + start + "-" + end)
-    }
-
-    /**
-
-     * Search for the locus string -- this function is called from various igv.js GUI elements, and is not part of the
-     * API.  Wraps ```search``` and presents an error dialog if false.
-     *
-     * @param string
-     * @param init
-     * @returns {Promise<void>}
-     */
-    async doSearch(string, init) {
-        const success = await this.search(string, init)
-        if (!success) {
-            this.alert.present(new Error(`Unrecognized locus: <b> ${string} </b>`))
-        }
-        return success
     }
 
 
@@ -1674,6 +1643,10 @@ class Browser {
     async search(stringOrArray, init) {
 
         const loci = await search(this, stringOrArray)
+        return this.updateLoci(loci, init)
+    }
+
+    async updateLoci(loci, init) {
 
         if (loci && loci.length > 0) {
 
@@ -1710,7 +1683,7 @@ class Browser {
         }
     }
 
-    async DEPRECATED_loadSampleInfo(sampleInfoConfig) {
+    async loadSampleInfo(sampleInfoConfig) {
 
         await this.sampleInfo.loadSampleInfo(sampleInfoConfig)
 
@@ -1850,9 +1823,9 @@ class Browser {
         json["locus"] = locus.length === 1 ? locus[0] : locus
 
         const roiSets = this.roiManager.toJSON()
-        if(roiSets) {
+        if (roiSets) {
             json["roi"] = roiSets
-            if(!this.roiManager.showOverlays){
+            if (!this.roiManager.showOverlays) {
                 json["showROIOverlays"] = false   // true is the default
             }
         }
@@ -2217,7 +2190,7 @@ class Browser {
     }
 
     async blat(sequence) {
-        return createBlatTrack({sequence, browser: this, name: 'Blat', title: 'Blat' })
+        return createBlatTrack({sequence, browser: this, name: 'Blat', title: 'Blat'})
     }
 }
 
@@ -2408,9 +2381,9 @@ function toggleTrackLabels(trackViews, isVisible) {
         for (let viewport of viewports) {
             if (viewport.trackLabelElement) {
                 if (0 === viewports.indexOf(viewport) && true === isVisible) {
-                    viewport.trackLabelElement.style.display = 'block';
+                    viewport.trackLabelElement.style.display = 'block'
                 } else {
-                    viewport.trackLabelElement.style.display = 'none';
+                    viewport.trackLabelElement.style.display = 'none'
                 }
             }
         }
